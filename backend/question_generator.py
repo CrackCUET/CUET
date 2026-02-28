@@ -866,7 +866,12 @@ class QuestionGenerator:
             return []
         
         try:
-            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            has_emergent = False
+            try:
+                from emergentintegrations.llm.chat import LlmChat, UserMessage
+                has_emergent = True
+            except ImportError:
+                pass
 
             logger.info(f"LLM generate_questions subject={subject} chapter={chapter} count={count} diff={difficulty.value} using_google_sdk={bool(os.environ.get('GEMINI_API_KEY'))}")
 
@@ -957,10 +962,12 @@ class QuestionGenerator:
                     "Include ASCII diagrams for LP graphs (feasible region, corner points) and demand-supply curves where relevant."
                 )
 
-            chat = LlmChat(
-                api_key=self.api_key,
-                session_id=f"question_gen_{uuid.uuid4()}",
-                system_message="""You are an expert CUET exam question creator. You create high-quality, challenging MCQ questions that:
+            chat = None
+            if has_emergent:
+                chat = LlmChat(
+                    api_key=self.api_key,
+                    session_id=f"question_gen_{uuid.uuid4()}",
+                    system_message="""You are an expert CUET exam question creator. You create high-quality, challenging MCQ questions that:
 1. Test conceptual understanding, not just memorization
 2. Have exactly 4 options (A, B, C, D) with only ONE correct answer
 3. Include subtle conceptual traps in incorrect options — plausible distractors are key
@@ -983,7 +990,7 @@ IMPORTANT FOR DIAGRAM QUESTIONS:
 - Use clear labels and measurements in ASCII diagrams.
 
 CHAPTER DIVERSITY RULE: You MUST spread questions across ALL topics listed, not cluster them on one or two topics. If 5 topics are given, each should get roughly equal representation."""
-            ).with_model("gemini", "gemini-2.5-flash")
+                ).with_model("gemini", "gemini-2.5-flash")
 
             # Encourage CUET-style output and avoid copying the sample questions verbatim
             # (we only use sample patterns for style guidance)
@@ -1061,8 +1068,12 @@ Return only JSON.
             response = await self._generate_with_google_sdk(prompt)
 
             if response is None:
-                user_message = UserMessage(text=prompt)
-                response = await chat.send_message(user_message)
+                if has_emergent:
+                    user_message = UserMessage(text=prompt)
+                    response = await chat.send_message(user_message)
+                else:
+                    logger.error("Google SDK failed and emergent fallback is disabled.")
+                    return []
 
             # Parse JSON response (strip code fences + handle minor pre/post text)
             json_str = response.strip()
@@ -1099,8 +1110,12 @@ Return only JSON.
                 strict_prompt = prompt + "\n\nRESPONSE FORMAT: Output MUST be valid JSON only (no trailing commas, no unterminated strings)."
                 response2 = await self._generate_with_google_sdk(strict_prompt)
                 if response2 is None:
-                    user_message = UserMessage(text=strict_prompt)
-                    response2 = await chat.send_message(user_message)
+                    if has_emergent:
+                        user_message = UserMessage(text=strict_prompt)
+                        response2 = await chat.send_message(user_message)
+                    else:
+                        logger.error("Google SDK failed second time (strict prompt).")
+                        return []
                 json_str = response2.strip()
                 if json_str.startswith("```json"):
                     json_str = json_str[7:]
