@@ -1068,7 +1068,7 @@ Return only JSON.
             response = await self._generate_with_google_sdk(prompt)
 
             if response is None:
-                if has_emergent:
+                if has_emergent and chat is not None:
                     user_message = UserMessage(text=prompt)
                     response = await chat.send_message(user_message)
                 else:
@@ -1110,7 +1110,7 @@ Return only JSON.
                 strict_prompt = prompt + "\n\nRESPONSE FORMAT: Output MUST be valid JSON only (no trailing commas, no unterminated strings)."
                 response2 = await self._generate_with_google_sdk(strict_prompt)
                 if response2 is None:
-                    if has_emergent:
+                    if has_emergent and chat is not None:
                         user_message = UserMessage(text=strict_prompt)
                         response2 = await chat.send_message(user_message)
                     else:
